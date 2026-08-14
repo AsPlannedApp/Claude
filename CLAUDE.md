@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `public-app/`     | Next.js 16, TypeScript, Tailwind v4 | Marketing site + API backend            | project.app (Vercel)                |
 | `logged-app/`     | Vue 3, JavaScript, Tailwind v4      | Logged-in SPA                           | me.project.app (Cloudflare Workers) |
 | `backend-php/`    | Laravel 13, PHP 8.4                 | Backend API (iCal, data processing)     | Docker, port 4000                   |
-| `api-collection/` | Bruno API Collection                | Centralized API endpints for test       | —                                   |
+| `api-collection/` | Bruno/Postman API Collection        | Centralized API endpints for test       | —                                   |
 | `project-ui/`     | npm workspaces                      | Shared design-system component library  | localhost playgrounds               |
 | `project-design/` | Static reference                    | Design tokens, fonts, preview HTML      | Claude Design                       |
 
@@ -70,7 +70,7 @@ Trigger points:
 ```bash
 cd public-app
 nvm use v22.22.3 && npm install
-npm run serve       # http://localhost:3000 + Tailwind watch
+npm run dev         # http://localhost:3000 + Tailwind watch
 npm run ci:check    # prettier:fix + tsc + jest — use before committing
 ```
 
@@ -84,7 +84,7 @@ flow, Tailwind build details, and the full API route structure.
 ```bash
 cd logged-app
 npm install
-npm run serve       # Vite dev server at http://localhost:3001
+npm run dev         # Vite dev server at http://localhost:3001
 npm run test        # Vitest
 ```
 
@@ -98,7 +98,7 @@ testing details.
 
 ```bash
 cd backend-php
-npm run serve       # Docker services, port 4000
+npm run dev       # Docker services, port 4000
 docker-compose exec php-fpm php artisan test
 ```
 

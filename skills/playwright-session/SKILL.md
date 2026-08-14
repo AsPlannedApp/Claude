@@ -13,8 +13,8 @@ This skill is **dev-only** — it depends on `debug.token`/`debug.hash` which th
 ## Prerequisites
 
 Both dev servers must be running:
-- `public-app`: `npm run serve` → `localhost:3000` (auth API)
-- `logged-app`: `npm run serve` → `localhost:3001` (Vue SPA)
+- `public-app`: `npm run dev` → `localhost:3000` (auth API)
+- `logged-app`: `npm run dev` → `localhost:3001` (Vue SPA)
 
 ---
 
