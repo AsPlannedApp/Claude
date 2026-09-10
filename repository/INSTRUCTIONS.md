@@ -55,6 +55,10 @@ directory and one level up), read it. Reuse rather than restate:
   it speculatively.
 - Do not duplicate cross-repo conventions verbatim into this repo's file — link to the root file's
   section by name instead.
+- If the root file has a "Codex product-owner gate", a "Verification & Working Discipline", or a
+  "Rate limiting" section, add a one-line pointer to it from this repo's `CLAUDE.md` (near the
+  top) rather than restating the rules — an agent working only in this repo should still be sent
+  to the gate and the discipline rules.
 
 If there's no monorepo root context, skip this step — the repo stands alone.
 

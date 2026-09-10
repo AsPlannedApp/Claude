@@ -89,6 +89,16 @@
 
 ---
 
+## Code comments
+
+Prefer clear names and small helpers over explanatory comments. Comment only for a reason the
+code cannot carry itself — a constraint, a browser/platform quirk, a failure mode — in one or
+two lines. No ticket/step/review references, no implementation history, no walkthroughs of
+self-explanatory code. Reserve longer comments for genuinely complex algorithms, compatibility
+constraints, and security-sensitive behavior.
+
+---
+
 ## Quality commands
 
 <!-- Same commands as CLAUDE.md's Quality checks section, but this is the canonical source —

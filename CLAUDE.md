@@ -24,14 +24,51 @@ Each sub-repo has its own `CLAUDE.md` with repo-specific detail, and an `ARCHITE
 
 `claude-memory/` is the cross-repo planning and memory layer for this project. It is **not** a deployable codebase — it is Claude's persistent working memory for the Project: `knowledge/` holds domain rules/facts/hypotheses (routed via its own `INDEX.md`), `plans/` holds the active feature plans as numbered step folders, each with its own `README.md` spec.
 
-**Before starting any  work:** read `claude-memory/plans/INDEX.md` to check step status and dependencies. Each step folder has its own `README.md` with the full spec for that step.
+**Before starting any plan work:** read `claude-memory/plans/INDEX.md` to check step status and dependencies. Each step folder has its own `README.md` with the full spec for that step. **Then check the target step's own folder for the most recent dated report** (a `TECH_REPORT.md`, a `FIXES/` round file, or similar) and read it in full before planning — `INDEX.md` gives status, not the decisions and deviations a prior round already made and reasoned through. Skipping this has directly caused sessions to redo already-settled work and reverse explicit, user-confirmed decisions they never saw recorded.
+
+---
+
+## Verification & Working Discipline
+
+These rules exist because of a concrete failure: a session ran a large multi-phase
+implementation, spot-tested pieces of it shallowly, and reported "DONE, all phases verified" —
+the user's own follow-up check found several real problems, including at least one direct
+regression, that the session's testing had missed or explained away. Apply these on every task:
+
+- **Verify the whole element, not just the property you changed.** After any CSS/markup edit to
+  an interactive element, check its full computed style against the reference — cursor, padding,
+  border, every box-model property — not only the one thing the fix targeted. Narrow, confirmation-
+  biased checking (looking only for what you already expect to be true) is how a modal ends up
+  with the wrong padding or a button loses `cursor: pointer` while the one property you were
+  chasing looks fine.
+- **An error hit during your own testing is a bug lead, not friction to route around.** A 422, a
+  console error, an unexpected redirect, a state that "shouldn't happen" — stop and determine
+  whether it's real before treating it as a test-setup annoyance and continuing past it. Silently
+  working around your own error is how you end up with direct evidence of a bug in hand and never
+  report it.
+- **State exactly what you tested; never generalize a narrow check into a broad status.** "DONE,
+  verified" must mean every stated scope item was actually exercised, not that the phases you
+  wrote a plan around were implemented and a few of them spot-checked. If a path wasn't tested
+  (an edit-existing-item flow, an error branch, a disabled/paused state), say so explicitly rather
+  than letting a confident summary cover it by omission.
+- **"Use/reuse the same X" means copy X's literal values, not rebuild something similar from
+  memory.** When told to reuse an existing shell, pattern, or component's look, pull its actual
+  props/CSS values (size, padding, header markup) rather than approximating them.
+- **No scope growth mid-task without a checkpoint.** A new UI pattern, an extra cleanup, a
+  differently-sized element, an additional "while I'm here" fix — even a well-reasoned one — needs
+  to be surfaced to the user, not silently folded into an already-approved plan.
+- **When told to read a specific file or reference a specific part of one, actually read it and
+  check your work against exactly what was asked** — a referenced section, paragraph, or element
+  inside a Markdown/HTML/design doc. Do not rely on a skim or an earlier summary and assume the
+  detail was covered. For a large file, read it in chunks methodically, or ask which section
+  matters, rather than silently missing content the user explicitly pointed at.
 
 ---
 
 ## Basic Knowledgebase
 
 - Before starting a task/plan, review existing rules and hypotheses for that domain (`claude-memory/knowledge/<domain>/`). Apply rules by default; check if a hypothesis can be tested with today's work.
-- At the end of each task, extract insights into the domain folder: `knowledge.md` (facts/patterns), `hypotheses.md` (needs more data), `rules.md` (confirmed — apply by default). Create the folder if it doesn't exist.
+- At the end of each task, extract insights into the domain folder: `knowledge.md` (facts/patterns), `hypotheses.md` (needs more data), `rules.md` (confirmed — apply by default). Create the folder if it doesn't exist. If a domain's `rules.md` grows past ~500 lines, split it into topic sub-files (`rules-<topic>.md`) with `rules.md` reduced to a routing index — preserve rule numbers absolute across the split.
 - Promote a hypothesis to a rule after 3+ confirmations; demote a rule back to hypothesis if later contradicted.
 - Keep `claude-memory/knowledge/INDEX.md` routing to every domain folder.
 - Every plan's last step should update the knowledgebase, unless told not to.
@@ -48,6 +85,38 @@ Trigger points by codebase:
 - **backend-php**: any new/modified controller, route in `routes/api.php`, or `ApiResponse` usage
 - **public-app**: any new/modified route in `pages/api/v1/`, changes to `helpers/api/api-util.ts`, or page code that destructures API responses
 - **logged-app**: any `src/views/` or `App.vue` code that reads `element`, `collection`, or `pagination` from API data
+
+---
+
+## Codex product-owner gate
+
+If the workspace uses a second agent (e.g. Codex) as an independent product-owner / code-quality
+gate, before declaring any **larger** multi-repository implementation complete (new feature,
+multi-file implementation, design-facing change), run the `codex-po-gate` skill — it holds the
+review script, the ≤2,000-char What-asked/Plan/Implementation brief format, the focused
+single-repo command, and the visual-fidelity gate. **Small, scoped fixes skip it** (lint/tests
+green is enough). For a large change, ask the user to confirm the plan before running the gate —
+do not self-classify a large change as "small".
+
+---
+
+## Rate limiting
+
+If the workspace rate-limits any endpoints, keep the approach identical across codebases:
+
+- **Every threshold is an env var**, never a code literal — e.g. `RL_<NAME>="<max>/<seconds>[,<max>/<seconds>]"`.
+  A single `RATE_LIMIT_MULTIPLIER` scales every `max` (e.g. loosen staging), and
+  `RATE_LIMIT_ENABLED=false` disables all limiters (local dev). Changing a limit is a redeploy,
+  not a code edit.
+- **Keyed per authenticated user, else per client IP.** Non-production honours a
+  `X-RateLimit-Bypass: <secret>` header (used by automated tests).
+- **Rejections return the standard error envelope** (status 429) plus `Retry-After` and
+  `X-RateLimit-*` headers — the same envelope every other error uses.
+- **Auth endpoints fail *open*** on limiter/store failure (an auth path must not go dark); other
+  endpoints may fail closed.
+- **Record rejections fire-and-forget and debounced** (e.g. one counter increment per reject,
+  a durable write only on the first rejection of each key+window and then rate-limited) so a
+  burst can't turn the limiter into a DB/log amplifier.
 
 ---
 
@@ -89,8 +158,9 @@ npm run test        # Vitest
 ```
 
 Deployed to Cloudflare Workers via `wrangler.toml`. See `logged-app/CLAUDE.md` for structure
-(`src/views/`, `src/components/`), state management (no Pinia — `App.vue` via `provide()`), and
-testing details.
+(`src/views/`, `src/components/`), state management (no global store in use — a store library
+may be installed but unused; `App.vue` holds state via `provide()`, don't add a store without
+discussing it), and testing details.
 
 ---
 

@@ -21,6 +21,20 @@ Next.js {{NEXT_VERSION}} marketing site and API backend, deployed to {{DEPLOY_TA
 
 ---
 
+<!-- OPTIONAL: include when this repo pins a fast-moving framework major whose APIs and file
+     conventions may differ from an agent's training data. Delete for a stable/older pin. -->
+## Framework version — check the installed docs first
+
+This repo is on {{FRAMEWORK}} {{MAJOR_VERSION}} — treat your prior knowledge of it as
+potentially stale. Before writing framework code, read the relevant guide under
+`node_modules/{{FRAMEWORK_PACKAGE}}/dist/docs/` (resolved from this file's directory; in a
+monorepo the package may not be visible from the repo root) and heed any deprecation notices.
+
+If the dev server auto-writes an agent-rules block into this file, commit it with your work —
+deleting it from the diff only makes the tool re-create the uncommitted change.
+
+---
+
 ## Dev & build
 
 ```bash
@@ -143,6 +157,17 @@ export default async function handler(req, res) {
 
 `apiHandler` (or your equivalent) should own: method dispatch (404/405 with `Allow` header), CORS,
 auth, and error formatting — keep that logic in one place, not duplicated per route.
+
+<!-- OPTIONAL: include if this repo rate-limits any routes. Delete otherwise. -->
+### Rate limiting
+
+<!-- {{RATE_LIMIT_LOCATION}}: e.g. "proxy.ts (repo root, Node runtime) rate-limits
+     /api/v1/auth/* by client IP before the route runs." -->
+{{RATE_LIMIT_LOCATION}}. Follows the workspace `CLAUDE.md`'s "Rate limiting" section: env-var
+thresholds (`RL_*`), a global multiplier + on/off switch, an `X-RateLimit-Bypass` secret
+honoured only in non-prod, the standard 429 error envelope + `Retry-After`/`X-RateLimit-*`,
+**fail open** on limiter/store failure for auth endpoints, and debounced fire-and-forget
+recording of rejections.
 
 ---
 

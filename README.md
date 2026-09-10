@@ -9,12 +9,19 @@ the placeholders, and Claude Code will have consistent cross-repo context from d
 - **`CLAUDE.md`** — the root-level guidance file: lists every codebase in the workspace, cross-repo
   conventions (design tokens, external services), and trigger points for the bundled skills. This
   is what Claude Code reads first when working anywhere in the workspace.
-- **`skills/`** — two example Claude Code skills:
+- **`skills/`** — three example Claude Code skills:
   - `api-review` — reviews an API endpoint/consumer for REST convention compliance.
   - `playwright-session` — bootstraps an authenticated browser session before visual testing.
+  - `codex-po-gate` — runs a second agent as an independent product-owner / code-quality gate
+    over uncommitted cross-repo changes before a larger implementation is declared complete.
+- **`scripts/`** — helper scripts the skills call:
+  - `codex-po-review.sh` — the `codex-po-gate` runner (reviews each repo in `CODEX_PO_REPOS`).
+  - `git-msg.sh` — asks the second agent for a one-line Conventional Commit subject for the
+    current uncommitted diff.
+  - `logs/` — per-run review transcripts (kept in Git; the log files themselves are ignored).
 - **`repository/`** — a template kit for generating a `CLAUDE.md` + `ARCHITECTURE.md` pair *inside*
-  each individual sub-repo. Contains `CLAUDE.template.md`, `ARCHITECTURE.template.md`, and
-  `INSTRUCTIONS.md`.
+  each individual sub-repo. Contains `CLAUDE.template.md`, `ARCHITECTURE.template.md`,
+  `INSTRUCTIONS.md`, and framework bootstraps (`CLAUDE.next.md`, `CLAUDE.php.md`, `CLAUDE.vue.md`).
 
 ## Setting this up in a new workspace
 
@@ -27,8 +34,15 @@ the placeholders, and Claude Code will have consistent cross-repo context from d
 3. Edit `CLAUDE.md`: replace the repo table, tech stack, brand tokens, and external services with
    your actual project's details. Search for `{{...}}` placeholders in the Design System section.
 4. Point Claude Code at `skills/` (e.g. symlink or copy into `.claude/skills/`) if you want
-   `/api-review` and `/playwright-session` available, and adjust their `SKILL.md` content to match
-   your actual endpoints/ports.
+   `/api-review`, `/playwright-session`, and `/codex-po-gate` available, and adjust their
+   `SKILL.md` content to match your actual endpoints/ports.
+   - `codex-po-gate` runs `scripts/codex-po-review.sh`, which assumes it sits at
+     `<workspace-root>/<memory-repo>/scripts/` (it derives the workspace root as two levels up).
+     Copy `scripts/` — including `scripts/logs/.gitignore` — into your memory repo so that holds,
+     or set `CODEX_PO_WORKSPACE_ROOT` if it lives elsewhere; the skill invokes it as
+     `./claude-memory/scripts/codex-po-review.sh`, so adjust that path to match. Set
+     `CODEX_PO_REPOS` to your real repo list (edit the default in the script). Both `scripts/*.sh`
+     need the `codex` CLI (or your second-agent CLI) on `PATH`.
 
 ## Generating per-repo docs with `repository/`
 
@@ -49,5 +63,5 @@ If you're about to share or reuse this repo, grep for leftover project-specific 
 handing it off:
 
 ```bash
-grep -rniE "your-project-name" --include="*.md" .
+grep -rniE "your-project-name" --include="*.md" --include="*.sh" .
 ```

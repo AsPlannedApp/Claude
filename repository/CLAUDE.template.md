@@ -129,6 +129,16 @@ code.
 
 ---
 
+## Code comments
+
+Prefer clear names and small helpers over explanatory comments. Add a comment only when the code
+cannot express an important reason, constraint, browser quirk, or failure mode on its own, and
+keep it to one or two lines. Do not include ticket/step/review references, implementation
+history, or multi-line walkthroughs of self-explanatory code. Longer comments are reserved for
+genuinely complex algorithms, compatibility constraints, and security-sensitive behavior.
+
+---
+
 <!-- OPTIONAL: frontend-only. Delete for a pure backend/API repo. -->
 ## Design system integration
 

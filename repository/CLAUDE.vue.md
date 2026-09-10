@@ -65,9 +65,11 @@ src/
 
 ## Auth & state
 
-<!-- This pattern (no Pinia, root-component provide()) is worth keeping as a real starting point
-     if your app follows it — replace with your actual store approach (Pinia, etc.) otherwise. -->
-No global store. `App.vue` is the central state holder:
+<!-- This pattern (no global store, root-component provide()) is worth keeping as a real starting
+     point if your app follows it — replace with your actual store approach (Pinia, etc.) otherwise. -->
+No global store in use — a store library (Pinia, etc.) may be installed and initialised but has
+no `defineStore()` calls; `App.vue` is the central state holder. Don't add a store without
+discussing it first.
 
 - Tokens stored in cookies; an `authFetch()` wrapper adds the `Authorization` header, retries on
   401, and redirects to logout on failure.

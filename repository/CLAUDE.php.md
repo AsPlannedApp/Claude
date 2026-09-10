@@ -113,6 +113,7 @@ ApiResponse::invalid($message, $status = 422)
 | 401 | Auth invalid/missing |
 | 409 | Conflict (duplicate, etc.) |
 | 422 | Validation failed |
+| 429 | Rate/throttle limit hit — only if this repo rate-limits (see below) |
 | 500 | Unhandled exception |
 
 ### Content-Type per resource
@@ -137,6 +138,28 @@ middleware): `{ "success": false, "status": 405, "message": "Method not allowed"
 Also rendered globally in `bootstrap/app.php` via `withExceptions()` so the standard envelope is
 guaranteed regardless of `Accept` header: one entry per failed rule, flattened from Laravel's
 `field => [messages]` shape into `errors: [{ message }, ...]`.
+
+<!-- OPTIONAL: include if this repo rate-limits any routes. Delete otherwise. -->
+### Rate limiting
+
+<!-- {{RATE_LIMIT_PROVIDER}}: e.g. "A RateLimitServiceProvider registers one named `throttle:*`
+     limiter per entry in config/ratelimit.php." -->
+{{RATE_LIMIT_PROVIDER}}. Follows the workspace `CLAUDE.md`'s "Rate limiting" section: env-var
+thresholds (`RL_<NAME>`), a global multiplier + on/off switch, a non-prod `X-RateLimit-Bypass`
+secret, the standard 429 error envelope + `Retry-After`/`X-RateLimit-*`, and debounced
+fire-and-forget recording of rejections. When disabled or bypassed the limiter callback returns
+`Limit::none()`.
+
+---
+
+<!-- OPTIONAL: include if this repo runs scheduled jobs and/or a queue worker. Delete otherwise. -->
+## Scheduled jobs & queue worker
+
+`routes/console.php` registers scheduled jobs, fired by a `schedule:work` service (e.g.
+`app-cron` in `docker-compose.yml`) — **not** by the request lifecycle. A separate
+`queue:work` service (e.g. `app-queue`) drains the queue every `ShouldQueue` job/notification is
+pushed onto; without it, those sit in the `jobs` table forever and are never processed. The two
+services are distinct — running one does not run the other. {{CRON_REFERENCE_DOC}}
 
 ---
 
