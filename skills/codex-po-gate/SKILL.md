@@ -1,87 +1,185 @@
 ---
-description: Run the Codex product-owner / code-quality gate on uncommitted cross-repo changes before declaring a multi-repository implementation complete. Use for any larger change (new feature, multi-file implementation, design-facing change); small scoped fixes skip it. Also covers the per-repo focused review and the visual-fidelity gate.
+description: Run the independent Codex product-owner gate for larger changes. Audit invariants and their sibling sites first; review all classes in parallel under one 180-second deadline; P1 blocks, P2/P3 become follow-ups, and three rounds trigger escalation.
 ---
 
 # Codex product-owner gate
 
-Claude is the implementation agent; a second agent (Codex) is the independent product-owner and
-code-quality gate. Adapt the CLI name/flags below to whatever second agent your workspace uses.
+Codex is the independent product-owner and code-quality reviewer. Claude is a fallback only
+when Codex returns a provider quota/rate-limit error in `--reviewer auto`. A fresh, read-only
+Claude reviewer has no shared implementation conversation; its valid verdict counts fully.
 
-## Size gate
+## Size and approval gate
 
-The gate is **not** mandatory for every change. Small, scoped fixes (a targeted bug fix, a
-single review comment addressed, a one-file correction) may skip it entirely — lint/tests green
-is enough. For anything larger (a new feature, a multi-file implementation, a design-facing
-change), write the What-was-asked / Plan / Implementation brief below, and **ask the user to
-confirm the plan before running the gate** — not just before merging. Do not assume a large
-change qualifies as "small" on your own judgment.
+Small scoped fixes may skip this gate when lint/tests pass. Larger changes (new features,
+multi-file implementations, design-facing changes) need a factual What-was-asked / Plan /
+Implementation brief and a user-approved plan before the gate. Approval already given for the
+implementation and its validation is sufficient; do not ask again before each review round.
 
-## Running the gate
+## Before round 1: audit invariants, not individual examples
 
-Before declaring a multi-repository implementation complete, run the workspace review script
-from the workspace root:
+For **every non-trivial logic change**, write a checklist of **5–15 one-line invariants** that
+must hold at every relevant site. Derive these from the actual behavior and approved decisions.
+Examples: every input loop charges its budget; all time arithmetic follows the same semantics;
+no early stop assumes generated instants are ordered; data failures preserve incomplete signals.
 
-```bash
-review_context="$(mktemp "${TMPDIR:-/tmp}/codex-review-context.XXXXXX.md")"
-trap 'rm -f "$review_context"' EXIT
+For **each** invariant:
 
-cat > "$review_context" <<'EOF'
-# What was asked
-- Concise requested behavior, acceptance criteria, and affected repositories.
+1. Search/list **all** relevant implementation sites, including preprocessing, callers,
+   alternate input sources, fallback paths, and exits. Record the search and its evidence with
+   repository-relative file:line references. Do not present a sample as an exhaustive list.
+2. Inspect every listed site and fix violations before launching the gate.
+3. Add at least one meaningful test per invariant. A parameterized test may cover sibling sites;
+   a test of one happy-path instance is insufficient for a class-wide claim. Run the tests and
+   record the actual outcomes, including gaps or untested paths.
+4. Write the checklist and evidence to an **audit sidecar** supplied through `--audit-file`.
+   Reviewers receive the complete checklist, assigned evidence, and bounded source context.
+   Keep it factual: reviewers must verify it, not trust the implementer's conclusions.
 
-# Plan
-- The intended approach and any explicit product or design decisions.
+The JSON sidecar has this shape (repeat the invariant object to reach 5–15):
 
-# Implementation
-- What changed, intentionally preserved behavior, tests run, and any relevant design references or visual checks.
-EOF
-
-./claude-memory/scripts/codex-po-review.sh --context-file "$review_context"
+```json
+{
+  "invariants": [{
+    "id": "budget",
+    "statement": "Every input-dependent loop respects the shared deadline and work budget.",
+    "search": "rg -n 'foreach|while|array_map|usort' app/Services/Example",
+    "evidence": "Full matched-site list below; inspected loops and called helpers, including preprocessing.",
+    "sites": [{"repo": "backend-php", "path": "app/Services/Example/Expand.php", "line": 42}],
+    "tests": [{"repo": "backend-php", "path": "tests/Unit/ExampleTest.php", "line": 31,
+               "name": "test_every_source_respects_budget", "result": "PASS; command and relevant cases"}]
+  }]
+}
 ```
 
-Before invoking the gate, replace the template text with a factual brief of **at most 2,000
-characters** (including headings and whitespace). The script rejects an oversized file with an
-actionable retry message, so condense it rather than truncating it. The three sections are
-deliberately required whenever that information is available: they let the reviewer check the
-diff against the request and plan, rather than only against generic code-quality expectations.
-Include only affected repositories, requested behavior and key constraints, intentional
-preservation, implementation, tests, and design/visual evidence when relevant. Use short
-bullets; omit ceremony, retrospectives, repeated detail, and prose that does not affect the
-review. Do not conceal known gaps; the reviewer will verify the brief against the repository.
+Use stable IDs across rounds. `search` and `evidence` must show how the complete site list was
+obtained; they are not attestations of semantic correctness. Each site needs a positive line;
+each test needs a name and actual result. Do not invent passing tests. Sidecars are limited to
+64,000 characters and are separate from the brief limit. Omission is allowed for manual/simple
+reviews with a warning, **not** for the non-trivial workflow above.
 
-The `--context-file` argument is optional so the gate can still be run manually when no task
-brief exists; the script prints a reduced-context warning in that case. The script runs the
-reviewer in read-only mode against each configured repository (`CODEX_PO_REPOS`, see the
-script), explicitly directing it to inspect that repository's uncommitted changes. Repositories
-with no staged, unstaged, or untracked changes are explicitly skipped. It fails unless the
-reviewer explicitly returns `DECISION: PASS` for every reviewed repository. A review has a fixed
-per-repo deadline; a timeout exits with status 124 and prints `Codex PO review: TIMEOUT`, so
-Claude must retry deliberately or ask the user how to proceed rather than reporting a false
-pass.
+## Launch and scope
 
-Every invocation stores the complete, timestamped per-repository transcript in
-`claude-memory/scripts/logs/` (the directory is kept in Git while log files are ignored). The
-command prints only each repository's decision and a maximum-three-bullet `TECHNICAL SUMMARY`,
-then prints the log directory path. On a failure, first use that summary to decide whether the
-cause is actionable; if it needs evidence, open the corresponding saved `<repo>.txt` log rather
-than rerunning blindly or pasting the full transcript into the conversation. Do not claim the
-implementation is complete when this gate fails; address the reported blockers and run it again.
-
-## Focused single-repository review
-
-For a focused review of one repository, run the reviewer directly from that repository:
+Use one stable `--session` task ID for the whole implementation. Commit the reviewable snapshot
+on its feature branch first so the next round has an unambiguous base; do not commit unrelated
+user changes. Keep the brief ≤2,000 characters; **launch only behind a ≤1,900-character guard**.
+Rewrite the current fix summary rather than appending round history to the brief.
 
 ```bash
-codex exec --sandbox read-only "Inspect and review all uncommitted changes. Do not modify files."
+# B = existing brief; A = existing audit JSON. Keep both outside the reviewed product diff.
+n=$(wc -m < "$B")
+if [ "$n" -le 1900 ]; then
+    ./claude-memory/scripts/codex-po-review.sh \
+        --context-file "$B" --audit-file "$A" \
+        --session feature-task-id --repos backend-php --base staging
+else
+    echo "Condense the brief to at most 1900 characters before launching." >&2
+fi
 ```
 
-## Visual-fidelity gate (any step with a design reference file)
+The entrypoint requires Python 3.9+ (standard library only). The script's own guard rejects empty or >2,000-character briefs. Context is optional for manual
+use; the normal workflow requires it. Include approved product exceptions, tests actually run,
+and material gaps. Do not ask reviewers to read the entire planning history.
 
-The plain-diff review above only ever checks correctness, tests, and contracts — it cannot see
-whether a UI change actually matches a design mockup. For any step whose folder contains a
-design reference (an `.html` mockup, a `DESIGN-handoff.md`, a Figma/image export, etc.), before
-declaring the step done: screenshot the implementation and the reference at matched container
-widths, save both to disk, and look at them side by side yourself — do not rely on the diff
-review to catch a visual mismatch, since it isn't given the screenshots and isn't asked the
-question. Record any matched-width screenshot convention your workspace settles on in
-`knowledge/<domain>/`.
+Existing options remain: `--repos a,b`, `--base REF`, `--effort low|medium|high`,
+`--reviewer codex|claude|auto` (default auto, also `PO_REVIEWER`). Repositories without the base
+ref fall back to uncommitted changes with a warning on round 1. For a previously reviewed repository, later rounds reject an unavailable ref or one that does not resolve to its previous reviewed HEAD. Verify first-round fallback warnings are intended.
+`--repos` rejects unknown/duplicate names. Generated files are listed instead of diffed.
+
+Other repositories can use the same bounded gate through `CODEX_PO_REPOS` and
+`CODEX_PO_WORKSPACE_ROOT`; do not bypass the timing/session controls with an unbounded direct
+`codex exec`. Git worktrees are supported. `PO_LOG_ROOT` redirects artifacts for isolated tests.
+
+## Reviewer contract and stop rule
+
+Reviewers sweep **all assigned classes before drilling deeply into one**, and do not stop at
+the first blocker. Each finding includes its class, every substantiated instance in the part,
+file:line, concrete input/impact, and severity:
+
+- **P1:** wrong results or data loss on realistic inputs, including concrete user-visible regressions.
+- **P2:** wrong only on rare/exotic inputs, or a guarantee violated without user-visible harm.
+- **P3:** test/documentation gaps.
+
+Strict wording alone does not turn an exotic issue or missing test into P1. Reviewers explicitly
+mark assigned invariants **confirmed**, **violated** (with sites), or **unverifiable** (with reason).
+A violated invariant must also have the appropriately graded finding; inspect unverifiable
+entries and do not describe them as verified. An unfinished sweep is incomplete coverage.
+
+The reviewer returns structured JSON; the script prints `DECISION: PASS|FAIL` and concise
+summaries. **Only P1 findings block product approval.** Invalid/missing output, incomplete
+coverage, command errors and timeouts are unsuccessful reviews, never PASS. Codex's final answer
+is captured separately; echoed prompts or intermediate PASS text cannot approve the change.
+
+P2/P3 automatically accumulate in the run's **`follow-ups.md`**, with source round/log and sites.
+Link this file in the completion report and copy material follow-ups into the task's durable
+tracking notes. Do not loop merely to clear P2/P3. Fix a trivial one if useful, but include that
+change in the next required delta; do not silently expand scope.
+
+After **any finding**, name its class and enumerate **all sibling sites**. Fix all P1 instances
+of that class in the same round, update the invariant evidence, and test the class. For deferred
+P2/P3, record the sibling audit in follow-ups instead of starting an unnecessary fix round.
+
+There are at most **three rounds per session**, including reviewer-error/timeout rounds.
+Preflight failures without reviewer launch do not consume a round. A successful third round
+passes. An unsuccessful third round prints **ESCALATE**; a fourth invocation refuses to launch
+models. Present unresolved P1s, uncertainty, timings and options to the user. Do not change the
+session ID to evade the cap. User-approved continuation starts a new session and explicitly
+carries forward unresolved findings/context. Explicit risk acceptance is a user decision, not
+a reviewer PASS.
+
+## Fix rounds: delta plus class siblings
+
+Keep the same session, commit the fixes, and use:
+
+```bash
+# Use the same 1900-character launch guard as above.
+./claude-memory/scripts/codex-po-review.sh \
+    --context-file "$B" --audit-file "$A" --session feature-task-id \
+    --repos backend-php --base PREVIOUS_REVIEWED_COMMIT
+```
+
+Only touched sites, previous P1 findings and class siblings are reviewed. New areas are opened
+only for concrete P1 impact. Do not repeatedly run a full-branch “final review” after delta fixes.
+Unresolved P1s persist even if a repo is omitted from `--repos`; a missing delta cannot erase
+one. Reviewers must provide specific code evidence when resolving a prior P1.
+
+When omitted, the session ID is derived from workspace and configured repository branches,
+not the selected subset or changing base. Prefer explicit task IDs to avoid mixing unrelated
+work on the same branch. Session metadata lives in ignored `scripts/logs/sessions/` and is
+locked against concurrent rounds. Unfinished original scope persists across empty deltas and repository subsets; its base is frozen to a commit SHA. Legacy saved symbolic bases fail preflight: restore their original immutable review base from evidence rather than guessing a moving HEAD. Completed worker findings survive cancellation: the next invocation recovers valid P1/P2/P3 artifacts from interrupted rounds before it can approve a delta.
+
+## Hard speed budget
+
+**Every invocation, including round 1, has one ≤180-second wall-clock deadline.** Preparation,
+queueing, parallel reviews, fallback and reporting all share it. `REVIEW_TIMEOUT_SECONDS`
+defaults to 180; higher values are rejected. Review workers stop with five seconds reserved for
+cleanup/reporting. The supervisor terminates process groups and returns timeout status 124; SIGTERM/SIGINT also terminate reviewer groups and record interruption;
+completed part artifacts remain available. An operating-system suspension is outside the
+script's scheduling control; never promise provider completion merely because a timer exists.
+
+- With an audit, assign each invariant class an explicit owner across whole sibling files, grouping more than five classes into at most five implementation parts per repository. Test files get explicit test parts. This avoids every file reviewer re-auditing every class.
+- Without an audit, pack whole files using a **400-changed-line target**. The same target packs test parts; large files remain intact. Class parts may exceed it to preserve sibling context. Every site remains enumerated in the prompt; long prose evidence is explicitly excerpted with a path to the full sidecar.
+- Default maximum concurrency: **six** (`PO_MAX_PARALLEL`, 1–6). Six is an observed operating
+  point, not a guaranteed provider quota. Queue time consumes the same deadline.
+- Diffs and bounded sibling context are attached. Omitted excerpts are named. Reviewers may
+  read missing context but must not run git, suites, builds or servers, or reread skill files.
+- `--effort low` is for small follow-ups. Default effort comes from the installed configuration.
+- `--first-round-model MODEL` is an explicit, measured opt-in: only the largest first-round
+  part uses it. Later rounds use the configured default. Do not enable a stronger model merely
+  on reputation; check availability, coverage and latency on a representative part first.
+- No Ollama pre-filter: use deterministic searches/site inventories. The ICS Qwen campaign
+  repeatedly produced incorrect or unusable diagnoses; local-model output has no gate authority.
+- Auto fallback runs once, **only** on a Codex quota/rate-limit diagnostic, within the remaining
+  deadline. A real FAIL, malformed response, timeout, missing CLI, or auth error never triggers it.
+  Explicit `--reviewer claude` remains available when Codex is known unavailable.
+
+Each run saves prompts, diffs, final responses, full transcripts, per-part results,
+`findings.json`, `follow-ups.md`, and **`metrics.json`** (preparation, queue, attempts, total time,
+part sizes and model calls). Inspect those artifacts instead of rerunning blindly.
+Exit codes: 0 pass; 1 review/error failure; 2 invalid invocation; 3 round-cap escalation;
+124 timeout; 127 required CLI missing. A third-round timeout remains 124 and also escalates.
+
+## Visual fidelity
+
+When a design reference exists, compare screenshots of the implementation and reference at
+matched widths yourself, including the complete computed style of changed interactive elements.
+Record what was checked in the brief. A text diff review cannot establish visual fidelity.
