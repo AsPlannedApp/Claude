@@ -104,11 +104,13 @@ Use `mcp__playwright__browser_run_code_unsafe`:
 
 ```js
 async (page) => {
-  const maxAge = 60 * 60 * 24 * 180
+  // Playwright cookies take `expires` (Unix seconds); without it they're session cookies and a
+  // browser restart logs the session out.
+  const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 180
   await page.context().addCookies([
-    { name: 'accessToken',  value: '<accessToken>',  domain: 'localhost', path: '/', maxAge },
-    { name: 'refreshToken', value: '<refreshToken>', domain: 'localhost', path: '/', maxAge },
-    { name: 'deviceId',     value: '<DEVICE_ID>',    domain: 'localhost', path: '/', maxAge },
+    { name: 'accessToken',  value: '<accessToken>',  domain: 'localhost', path: '/', expires },
+    { name: 'refreshToken', value: '<refreshToken>', domain: 'localhost', path: '/', expires },
+    { name: 'deviceId',     value: '<DEVICE_ID>',    domain: 'localhost', path: '/', expires },
   ])
   return 'cookies injected'
 }
@@ -132,5 +134,6 @@ The app shell (nav, avatar) should be visible — not the login page.
 | Register returns 422 | Password too weak or fields mismatch | Use exactly `Pa$$123456` |
 | Confirm returns 401 | Wrong token/hash or token already used | Re-register (tokens are single-use) |
 | Login returns 401 | Email not confirmed | Re-run Step 3 |
+| Logged out after a while; only `deviceId` cookie left | Cookies were set without `expires` (session cookies), and the MCP browser restarted | Re-run Step 4–5; the snippet sets `expires` |
 | App redirects to logout even with no cookies | `authFetch` fires on mount with no token | Use `page.context().addCookies()` BEFORE navigating (see Step 5) |
 | `debug` field absent from register response | Running against production | Skill only works on dev (`localhost:3000`) |
